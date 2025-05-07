@@ -45,7 +45,7 @@ static char * outputs[] = {{
 }};
 
 void process_input(const char *input, size_t len) {{
-  char * state = {};
+  char * state = \"{}\";
   size_t strindex = 0;
   while(strindex < len) {{
     for (int i = 0; inputs[i] != NULL; i++) {{
@@ -56,6 +56,7 @@ void process_input(const char *input, size_t len) {{
         state = ostates[i];
         printf(\"%s\", outputs[i]);
         strindex+=step;
+        input+=step;
         break;
       }}
     }}
@@ -73,6 +74,11 @@ int main(int argc, char *argv[]) {{
 
   return 0;
 }}", arrayize(&self.states), arrayize(&self.inputs), arrayize(&self.ostates), arrayize(&self.outputs), self.states[0])
+    }
+    pub fn print(&self) {
+        for i in 0..self.states.len() {
+            println!("{}, {} > {}, {}", self.states[i], self.inputs[i], self.ostates[i], self.outputs[i]) 
+        }
     }
 }
 
