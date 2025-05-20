@@ -1,21 +1,53 @@
-use std::env;
-use std::ffi::OsString;
-use std::fs;
-use std::io;
+use clap::Parser;
+use std::io::BufRead;
 use std::io::Write;
 use std::str::FromStr;
+use std::{fs, io, path};
 mod machine;
+use clap_complete::Shell;
+use clap::{Command, CommandFactory};
+use clap_complete::{generate, Generator};
 use machine::Machine;
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Output C code in plain C mode. editline mode depends on editline/readline.h and unistd.h,
+    /// plain C only depends on string.h and stdio.h
+    #[arg(short = 'e', long)]
+    pub no_editline: bool,
+
+    /// Path to atomato file. - means stdin
+    #[arg(default_value="-")]
+    pub path: path::PathBuf,
+
+    /// Generate completion for a certain shell
+    #[arg(short = 'c', long)]
+    pub completion: Option<Shell>,
+}
+
 fn main() {
-    let args: Vec<OsString> = env::args_os().collect();
-    let machine = Machine::from_str(
-        fs::read_to_string(args[1].to_str().unwrap())
-            .unwrap()
-            .as_str(),
-    );
+    let args = Args::parse();
+    if let Some(generator) = args.completion {
+        print_completions(generator, &mut Args::command());
+        return
+    }
+    let content = if args.path.to_str().unwrap() == "-" {
+        let stdin = io::stdin();
+        let lines: Vec<String> = stdin.lock().lines().flatten().collect();
+        lines.join("\n")
+    } else {
+        fs::read_to_string(args.path)
+            .expect("couldn't read the file. premission issue or doesn't exist.")
+    };
+    let machine = Machine::from_str(&content);
     match machine {
         Ok(mut machine) => {
+            let c_code_function = if args.no_editline {
+                Machine::to_c
+            } else {
+                Machine::to_c_editline
+            };
             writeln!(
                 io::stderr(),
                 "{machine}
@@ -27,10 +59,14 @@ Machine is {}
                     "incomplete"
                 }
             );
-            println!("{}", machine.to_c_editline());
+            println!("{}", c_code_function(&machine));
         }
         Err(err) => {
             writeln!(io::stderr(), "Machine syntax error: {:?}", err.message());
         }
     }
+}
+
+fn print_completions<G: Generator>(gen: G, cmd: &mut Command) {
+    generate(gen, cmd, cmd.get_name().to_string(), &mut io::stdout());
 }
