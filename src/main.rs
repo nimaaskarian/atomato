@@ -1,6 +1,8 @@
+use std::env;
 use std::ffi::OsString;
 use std::fs;
-use std::env;
+use std::io;
+use std::io::Write;
 use std::str::FromStr;
 mod machine;
 use machine::Machine;
@@ -12,6 +14,23 @@ fn main() {
             .unwrap()
             .as_str(),
     );
-    
-    println!("{}", machine.unwrap().to_c());
+    match machine {
+        Ok(mut machine) => {
+            writeln!(
+                io::stderr(),
+                "{machine}
+Machine is {}
+",
+                if machine.is_complete() {
+                    "complete"
+                } else {
+                    "incomplete"
+                }
+            );
+            println!("{}", machine.to_c());
+        }
+        Err(err) => {
+            writeln!(io::stderr(), "Machine syntax error: {:?}", err.message());
+        }
+    }
 }

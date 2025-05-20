@@ -1,12 +1,19 @@
+use std::collections::HashMap;
+use std::fmt;
+use std::hash::Hash;
 use std::mem;
 use std::str::FromStr;
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, PartialEq)]
 pub struct Machine {
     inputs: Vec<String>,
     outputs: Vec<String>,
     states: Vec<String>,
     ostates: Vec<String>,
+    i_count_map: HashMap<String, usize>,
+    o_count_map: HashMap<String, usize>,
+    s_count_map: HashMap<String, usize>,
+    os_count_map: HashMap<String, usize>,
 }
 
 #[derive(Debug)]
@@ -14,6 +21,15 @@ pub struct MachineError {
     message: String,
     line: usize,
     offset: usize,
+}
+
+impl MachineError {
+    pub fn message(&self) -> String {
+        format!(
+            "{} at line {} (column {})",
+            self.message, self.line, self.offset
+        )
+    }
 }
 
 enum FromStrState {
@@ -25,7 +41,8 @@ enum FromStrState {
 
 impl Machine {
     pub fn to_c(&self) -> String {
-format!("#include <stdio.h>
+        format!(
+            "#include <stdio.h>
 #include <string.h>
 
 static char * states[] = {{
@@ -73,18 +90,68 @@ int main(int argc, char *argv[]) {{
   }}
 
   return 0;
-}}", arrayize(&self.states), arrayize(&self.inputs), arrayize(&self.ostates), arrayize(&self.outputs), self.states[0])
+}}",
+            arrayize(&self.states),
+            arrayize(&self.inputs),
+            arrayize(&self.ostates),
+            arrayize(&self.outputs),
+            self.states[0]
+        )
     }
-    pub fn print(&self) {
-        for i in 0..self.states.len() {
-            println!("{}, {} > {}, {}", self.states[i], self.inputs[i], self.ostates[i], self.outputs[i]) 
+
+    fn update_count_maps(&mut self) {
+        if self.i_count_map.is_empty() {
+            self.i_count_map = count_map(&self.inputs);
+            self.o_count_map = count_map(&self.outputs);
+            self.s_count_map = count_map(&self.states);
+            self.os_count_map = count_map(&self.ostates);
         }
+    }
+
+    pub fn is_complete(&mut self) -> bool {
+        self.update_count_maps();
+        let input_count = self.i_count_map.len();
+        for (s, count) in self.s_count_map.iter() {
+            if *count != input_count {
+                dbg!(s, count, input_count);
+                return false;
+            }
+        }
+        true
     }
 }
 
-fn arrayize(arr: &Vec<String>) -> String {
-    let quoted: Vec<String> = arr.iter().map(|s| format!("\"{}\"",s)).collect();
-    return quoted.join(", ");
+fn count_map<T>(arr: &[T]) -> HashMap<T, usize>
+where
+    T: Eq,
+    T: Hash,
+    T: Clone,
+{
+    let mut counts = HashMap::with_capacity(arr.len());
+    for item in arr {
+        *counts.entry(item.clone()).or_insert(0) += 1;
+    }
+    counts
+}
+
+fn arrayize(arr: &[String]) -> String {
+    let quoted: Vec<String> = arr.iter().map(|s| format!("\"{}\"", s)).collect();
+    quoted.join(", ")
+}
+
+impl fmt::Display for Machine {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for i in 0..self.states.len() {
+            if let Err(err) = writeln!(
+                f,
+                "{}, {} > {}, {}",
+                self.states[i], self.inputs[i], self.ostates[i], self.outputs[i]
+            ) {
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
 }
 
 impl FromStr for Machine {
@@ -104,11 +171,6 @@ impl FromStr for Machine {
                         machine.states.push(temp_machine.states.pop().unwrap());
                         machine.outputs.push(mem::take(&mut buf));
                         machine.ostates.push(temp_machine.ostates.pop().unwrap());
-                        for _ in 1..temp_machine.inputs.len() {
-                            machine.states.push(machine.states[0].clone());
-                            machine.outputs.push(machine.outputs[0].clone());
-                            machine.ostates.push(machine.ostates[0].clone());
-                        }
                         machine.inputs.append(&mut temp_machine.inputs);
                         state = FromStrState::State;
                         offset = 0;
@@ -129,6 +191,9 @@ impl FromStr for Machine {
                     }
                     FromStrState::Input => {
                         temp_machine.inputs.push(mem::take(&mut buf));
+                        temp_machine
+                            .states
+                            .push(temp_machine.states.last().unwrap().clone());
                     }
                     FromStrState::Ostate => {
                         temp_machine.ostates.push(mem::take(&mut buf));
@@ -161,6 +226,41 @@ impl FromStr for Machine {
             }
             offset += 1;
         }
-        return Ok(machine);
+        Ok(machine)
+    }
+}
+
+mod test {
+    use super::*;
+        const BINARY_ADDITION: &str = "s0, 00 > s0, 0
+s0, 01 > s0, 1
+s0, 10 > s0, 1
+s0, 11 > s1, 0
+s1, 10 > s1, 0
+s1, 01 > s1, 0
+s1, 00 > s0, 1
+s1, 11 > s1, 1
+";
+    #[test]
+    fn test_simple() {
+        let machine = Machine::from_str(BINARY_ADDITION);
+        assert!(machine.is_ok());
+        let machine = machine.unwrap();
+        assert_eq!(format!("{machine}"), BINARY_ADDITION)
+    }
+
+    #[test]
+    fn test_multi_input() {
+        let binary_multiinput = "s0, 00 > s0, 0
+s0, 01, 10 > s0, 1
+s0, 11 > s1, 0
+s1, 01, 10 > s1, 0
+s1, 00 > s0, 1
+s1, 11 > s1, 1
+";
+        let machine = Machine::from_str(binary_multiinput);
+        assert!(machine.is_ok());
+        let machine = machine.unwrap();
+        assert_eq!(format!("{machine}"), BINARY_ADDITION)
     }
 }
