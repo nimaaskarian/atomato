@@ -15,7 +15,7 @@ struct Args {
     /// Output C code in plain C mode. editline mode depends on editline/readline.h and unistd.h,
     /// plain C only depends on string.h and stdio.h
     #[arg(short = 'e', long)]
-    pub no_editline: bool,
+    pub plain_c: bool,
 
     /// Path to atomato file. - means stdin
     #[arg(default_value="-")]
@@ -43,7 +43,7 @@ fn main() {
     let machine = Machine::from_str(&content);
     match machine {
         Ok(mut machine) => {
-            let c_code_function = if args.no_editline {
+            let c_code_function = if args.plain_c {
                 Machine::to_c
             } else {
                 Machine::to_c_editline
