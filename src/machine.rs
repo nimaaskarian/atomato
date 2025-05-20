@@ -98,6 +98,73 @@ int main(int argc, char *argv[]) {{
             self.states[0]
         )
     }
+    pub fn to_c_editline(&self) -> String {
+        format!(
+            "#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <editline/readline.h>
+
+static char * states[] = {{
+ {}, NULL
+}};
+
+static char * inputs[] = {{
+ {}, NULL
+}};
+
+static char * ostates[] = {{
+ {}, NULL
+}};
+
+static char * outputs[] = {{
+ {}, NULL
+}};
+
+void process_input(const char *input, size_t len) {{
+  char * state = \"{}\";
+  size_t strindex = 0;
+  while(strindex < len) {{
+    for (int i = 0; inputs[i] != NULL; i++) {{
+      size_t step = strlen(inputs[i]);
+      if (strncmp(inputs[i], input, step) == 0 &&
+        strcmp(state, states[i]) == 0) {{
+        fprintf(stderr, \"%s -> %s\\n\", state, ostates[i]);
+        state = ostates[i];
+        printf(\"%s\", outputs[i]);
+        strindex+=step;
+        input+=step;
+        break;
+      }}
+    }}
+  }}
+}}
+
+int main(int argc, char *argv[]) {{
+  if (isatty(STDIN_FILENO)) {{
+    while (1) {{
+        char * line = readline(\"> \");
+        process_input(line, strlen(line));
+        puts(\"\");
+    }}
+  }} else {{
+    char line[256];          
+    while (fgets(line, sizeof(line), stdin) != NULL) {{
+      size_t size = strcspn(line, \"\\n\");
+      line[size] = 0;
+      process_input(line, size);
+      puts(\"\");
+    }}
+  }}
+  return 0;
+}}",
+            arrayize(&self.states),
+            arrayize(&self.inputs),
+            arrayize(&self.ostates),
+            arrayize(&self.outputs),
+            self.states[0]
+        )
+    }
 
     fn update_count_maps(&mut self) {
         if self.i_count_map.is_empty() {
@@ -168,6 +235,9 @@ impl FromStr for Machine {
                 ' ' | '\t' | '\r' => {}
                 '\n' => match state {
                     FromStrState::Output => {
+                        for _ in 1..temp_machine.inputs.len() {
+                            temp_machine.ostates.push(temp_machine.ostates[0].clone())
+                        }
                         machine.states.push(temp_machine.states.pop().unwrap());
                         machine.outputs.push(mem::take(&mut buf));
                         machine.ostates.push(temp_machine.ostates.pop().unwrap());
@@ -197,6 +267,9 @@ impl FromStr for Machine {
                     }
                     FromStrState::Ostate => {
                         temp_machine.ostates.push(mem::take(&mut buf));
+                        for _ in 1..temp_machine.inputs.len() {
+                            temp_machine.ostates.push(temp_machine.ostates.last().unwrap().clone())
+                        }
                         state = FromStrState::Output;
                     }
                     FromStrState::Output => {

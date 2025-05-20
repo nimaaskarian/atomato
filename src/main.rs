@@ -27,7 +27,7 @@ Machine is {}
                     "incomplete"
                 }
             );
-            println!("{}", machine.to_c());
+            println!("{}", machine.to_c_editline());
         }
         Err(err) => {
             writeln!(io::stderr(), "Machine syntax error: {:?}", err.message());
