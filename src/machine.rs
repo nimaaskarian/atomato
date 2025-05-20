@@ -209,13 +209,11 @@ fn arrayize(arr: &[String]) -> String {
 impl fmt::Display for Machine {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for i in 0..self.states.len() {
-            if let Err(err) = writeln!(
+            writeln!(
                 f,
                 "{}, {} > {}, {}",
                 self.states[i], self.inputs[i], self.ostates[i], self.outputs[i]
-            ) {
-                return Err(err);
-            }
+            )?
         }
         Ok(())
     }
@@ -268,7 +266,9 @@ impl FromStr for Machine {
                     FromStrState::Ostate => {
                         temp_machine.ostates.push(mem::take(&mut buf));
                         for _ in 1..temp_machine.inputs.len() {
-                            temp_machine.ostates.push(temp_machine.ostates.last().unwrap().clone())
+                            temp_machine
+                                .ostates
+                                .push(temp_machine.ostates.last().unwrap().clone())
                         }
                         state = FromStrState::Output;
                     }
@@ -303,9 +303,10 @@ impl FromStr for Machine {
     }
 }
 
+#[cfg(test)]
 mod test {
     use super::*;
-        const BINARY_ADDITION: &str = "s0, 00 > s0, 0
+    const BINARY_ADDITION: &str = "s0, 00 > s0, 0
 s0, 01 > s0, 1
 s0, 10 > s0, 1
 s0, 11 > s1, 0
