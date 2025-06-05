@@ -105,19 +105,19 @@ fn gen_makefile(filename: &OsStr, stem: &OsStr, c_file: String, plain_c: bool) -
     let filename = filename.to_str().unwrap();
     let mut cflags = "";
     if !plain_c {
-        cflags = "CFLAGS := -leditline";
+        cflags = "CFLAGS := -leditline\n\n";
     }
     format!(
-        "{cflags}
-run: {stem}
+        "{cflags}run: {stem}
 \t./{stem}
+
 {stem}: {c_file}
 \t$(CC) $(CFLAGS) $< -o $@
 
 {c_file}: {filename}
 \tatomato $< > $@
+
 clean:
-\trm {stem} {c_file}
-"
+\trm {stem} {c_file}"
     )
 }
