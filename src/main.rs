@@ -1,4 +1,6 @@
 use clap::Parser;
+use std::ffi::OsStr;
+use std::fs::File;
 use std::io::BufRead;
 use std::io::Write;
 use std::str::FromStr;
@@ -22,6 +24,10 @@ struct Args {
     #[arg(default_value = "-")]
     path: path::PathBuf,
 
+    /// whether to make a Makefile or not (inside the input file's directory)
+    #[arg(short = 'm', long)]
+    makefile: bool,
+
     /// Generate completion for a certain shell
     #[arg(short = 'c', long)]
     completion: Option<Shell>,
@@ -38,7 +44,7 @@ fn main() -> io::Result<()> {
         let lines: Vec<String> = stdin.lock().lines().map_while(Result::ok).collect();
         lines.join("\n")
     } else {
-        fs::read_to_string(args.path)
+        fs::read_to_string(&args.path)
             .expect("couldn't read the file. premission issue or doesn't exist.")
     };
     let machine = Machine::from_str(&content);
@@ -60,7 +66,17 @@ Machine is {}
                     "incomplete"
                 }
             )?;
-            println!("{}", c_code_function(&machine));
+            if args.makefile {
+                if let Some(stem) = args.path.file_stem() {
+                    let filename = args.path.file_name().unwrap();
+                    let dir = args.path.parent().unwrap();
+                    if let Ok(mut file) = File::create(dir.join("Makefile")) {
+                        writeln!(file, "{}", gen_makefile(filename, stem, args.plain_c));
+                    }
+                }
+            } else {
+                println!("{}", c_code_function(&machine));
+            }
         }
         Err(err) => {
             writeln!(io::stderr(), "Machine syntax error: {:?}", err.message())?;
@@ -71,4 +87,26 @@ Machine is {}
 
 fn print_completions<G: Generator>(gen: G, cmd: &mut Command) {
     generate(gen, cmd, cmd.get_name().to_string(), &mut io::stdout());
+}
+
+fn gen_makefile(filename: &OsStr, stem: &OsStr, plain_c: bool) -> String {
+    let stem = stem.to_str().unwrap();
+    let filename = filename.to_str().unwrap();
+    let mut cflags = "";
+    if !plain_c {
+        cflags = "CFLAGS := -leditline";
+    }
+    format!(
+        "{cflags}
+run: {stem}
+\t./{stem}
+{stem}: {stem}.c
+\t$(CC) $(CFLAGS) $< -o $@
+
+{stem}.c: {filename}
+\tatomato $< > $@
+clean:
+\trm {stem} {stem}.c
+"
+    )
 }
