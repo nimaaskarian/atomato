@@ -24,9 +24,13 @@ struct Args {
     #[arg(default_value = "-")]
     path: path::PathBuf,
 
-    /// whether to make a Makefile or not (inside the input file's directory)
+    /// make a Makefile and a .c file (inside the `path`'s directory)
     #[arg(short = 'm', long)]
     makefile: bool,
+
+    /// don't make a .c file when creating the makefile
+    #[arg(long, requires="makefile")]
+    no_c_file: bool,
 
     /// Generate completion for a certain shell
     #[arg(short = 'c', long)]
@@ -70,8 +74,15 @@ Machine is {}
                 if let Some(stem) = args.path.file_stem() {
                     let filename = args.path.file_name().unwrap();
                     let dir = args.path.parent().unwrap();
+                    let c_file = format!("{}.c", stem.to_str().unwrap());
+                    if !args.no_c_file {
+                        if let Ok(mut file) = File::create(dir.join(&c_file)) {
+                            writeln!(file, "{}", c_code_function(&machine));
+                        }
+                    }
+
                     if let Ok(mut file) = File::create(dir.join("Makefile")) {
-                        writeln!(file, "{}", gen_makefile(filename, stem, args.plain_c));
+                        writeln!(file, "{}", gen_makefile(filename, stem, c_file, args.plain_c));
                     }
                 }
             } else {
@@ -89,7 +100,7 @@ fn print_completions<G: Generator>(gen: G, cmd: &mut Command) {
     generate(gen, cmd, cmd.get_name().to_string(), &mut io::stdout());
 }
 
-fn gen_makefile(filename: &OsStr, stem: &OsStr, plain_c: bool) -> String {
+fn gen_makefile(filename: &OsStr, stem: &OsStr, c_file: String, plain_c: bool) -> String {
     let stem = stem.to_str().unwrap();
     let filename = filename.to_str().unwrap();
     let mut cflags = "";
@@ -100,13 +111,13 @@ fn gen_makefile(filename: &OsStr, stem: &OsStr, plain_c: bool) -> String {
         "{cflags}
 run: {stem}
 \t./{stem}
-{stem}: {stem}.c
+{stem}: {c_file}
 \t$(CC) $(CFLAGS) $< -o $@
 
-{stem}.c: {filename}
+{c_file}: {filename}
 \tatomato $< > $@
 clean:
-\trm {stem} {stem}.c
+\trm {stem} {c_file}
 "
     )
 }
